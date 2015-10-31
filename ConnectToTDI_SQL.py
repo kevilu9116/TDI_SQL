@@ -16,16 +16,29 @@ class TDISQL:
 	def __init__(self, host, user, password, dbName):
 		self.db = MySQLdb.connect(host, user, password, dbName)
 
-	def parseAACode(self, aaCode):
+	"""
+	Parses a string containing the normal amino acid, the location and
+	the mutated amino acid. The function separates these three values in the
+	string and returns them in a tuple.
 
-		#if there are no digits in the aaCode, then the code describes the mutation. We return null for original AA and AA loc and set AA mutation to the aaCode
+	param: aaCode - the string containing the AA information
+	return: tuple in the following form: (normal AA, AA locatin, mutated AA)
+	"""
+	@staticmethod
+	def parseAACode(aaCode):
+
+		"""
+		if there are no digits in the aaCode, then the code describes the mutation.
+		We return null for original AA and AA loc and set AA mutation to the aaCode
+		"""
 		if not any(char.isdigit() for char in aaCode):
 			return ("NULL", "NULL", aaCode)
 
 		"""
 		Algorithm to parse a typical AA code. Will return a tuple of the following format:
 		(original AA, AA location, mutated AA). In some cases, the mutated AA may be 'fs' for frameshift.
-		In other cases, the only information provided is the mutation location, in which case we return null for the AA information and only give the location.
+		In other cases, the only information provided is the mutation location, 
+		in which case we return null for the AA information and only give the location.
 		"""
 		foundDigit = 0
 		origAA = ""
@@ -55,12 +68,20 @@ class TDISQL:
 
 		if mutAA == "":
 			mutAA = "NULL"
-		# try:
-		# 	aaPos = int(aaPos)
-		# except:
-		# 	aaPos = "NULL"
+
 		return (origAA, aaPos, mutAA)
 
+	"""
+	Function reads in a line from the raw input file, 
+	parses out all the different data for each data field,
+	then returns the data formatted for an 'SQL insert' command.
+
+	param: splitLine - Line of input text as a list of strings split by their delimiter
+	param isString - List of binary values indicating whether or not the corresponding index in splitLine should be interpreted
+						as a string or not.
+	param firstNull: whether the first element in the insert should be 'NULL' (due to auto-incrementing the primary key)
+	return valueString: Data formatted as a string for input into an 'SQL insert' command.
+	"""
 	def processValues(self, splitLine, isString, firstNull = True):
 		valueString = ""
 		if firstNull:
@@ -79,7 +100,7 @@ class TDISQL:
 					item = "," + str(splitLine[i])
 					valueString += item
 				elif isString[i] == 2:
-					parsedCode = self.parseAACode(splitLine[i])
+					parsedCode = parseAACode(splitLine[i])
 					valueString += "," + str(parsedCode[1]) + ",'" + str(parsedCode[0]) + "','" + str(parsedCode[2]) + "'" 
 		return valueString
 
@@ -643,17 +664,11 @@ class TDISQL:
 				self.db.rollback()
 				sys.exit()
 
-	def executeQuery(self, query):
-		cursor = self.db.cursor()
-		try:
-			cursor.execute(query)
-			results = cursor.fetchall()
-			return results
-		except:
-			print "Error processing query. Please check to ensure you have a legal MySQL query."
-			print query
-			return
-
+	"""
+	Given a TCGA gene name, return the corresponding geneID from the 'Genes' table
+	param geneName: TCGA gene name
+	return geneID: id of gene in TDI database
+	"""
 	def getGeneID(self, geneName):
 		cursor = self.db.cursor()
 		query = "SELECT gene_id\
@@ -666,6 +681,15 @@ class TDISQL:
 		except:
 			print "Error finding gene id. Please ensure that given gene %s is a proper gene name. Otherwise %s is not in the database." %(geneName, geneName)
 			return "null"
+
+	"""
+	Find all tumors (patients) with a given driver gene.
+
+	param gtGene: TCGA gene name
+	param mutType: optional parameter to condition the query only on tumors with synonymous or nonsynonymous mutations of gtGene
+
+	return list of patient IDs
+	"""
 
 	def findTumorsWithGT(self, gtGene, mutType = 'all'):
 		cursor = self.db.cursor()
@@ -695,7 +719,6 @@ class TDISQL:
 				    JOIN Somatic_Mutations ON Somatic_Mutations.patient_id = Patients.patient_id AND Somatic_Mutations.gene_id = Genes.gene_id\
 					WHERE Genes.gene_name = '%s' AND TDI_Results.gt_gene_id IS NOT NULL AND Somatic_Mutations.mut_type = 'nonsynonymous SNV'" %(gtGene)
 
-
 		try:
 			cursor.execute(query)
 			results = cursor.fetchall()
@@ -705,6 +728,14 @@ class TDISQL:
 			print query 
 			return
 
+	"""
+	Get number of tumors in the database with a given driver gene occuring at a given amino acid location
+
+	param gtGene: TCGA driver gene
+	param aaLoc: int representing a particular amino acid position
+
+	return: number of tumors (patients) with 'gtGene' called as a driver, with the mutation occurring at 'aaLoc'
+	"""
 	def numberOfTumorsWithGTAtLocation(self, gtGene, aaLoc):
 		cursor = self.db.cursor()
 
@@ -722,6 +753,14 @@ class TDISQL:
 			print query
 			return
 
+	"""
+	Retrieve the tumor IDs of tumors with gtGene as a driver at aaLoc. (could merge this function with the one above)
+
+	param: gtGene: TCGA driver gene name
+	param: aaLoc: int representing a particular amino acid position
+
+	return: list of patient IDs that have gtGene as driver at aaLoc.
+	"""
 	def getTumorsMutatedWithGTAtLocation(self, gtGene, aaLoc):
 		cursor = self.db.cursor()
 
